@@ -43,11 +43,12 @@ ssh dgx-node1                                  # get on the GPU box
 bash ~/hpc-stack/doctor.sh                     # full health check + $HOME leak check
 ```
 
-Services (`svc.sh`): `ollama webui n8n litellm vllm vlm coder comfyui
-cloudflared moto keepalive`. Ports are `BASE + HPC_PORT_OFFSET` (offset is
-100 in interactive shells via `.bashrc`; **non-interactive `ssh host 'cmd'`
-skips `.bashrc`, so always `export HPC_PORT_OFFSET=100` before sourcing
-`00-env.sh` by hand in a one-off SSH command**).
+Services (`svc.sh`): `ollama webui n8n litellm vllm coder coder-watch
+comfyui comfyui-watch cloudflared moto keepalive`. Ports are `BASE +
+HPC_PORT_OFFSET` (offset is 100 in interactive shells via `.bashrc`;
+**non-interactive `ssh host 'cmd'` skips `.bashrc`, so always `export
+HPC_PORT_OFFSET=100` before sourcing `00-env.sh` by hand in a one-off SSH
+command**).
 
 | Service | Real port | Purpose |
 |---|---|---|
@@ -55,10 +56,11 @@ skips `.bashrc`, so always `export HPC_PORT_OFFSET=100` before sourcing
 | webui | 8180 | Open-WebUI chat UI |
 | n8n | 5778 | workflow automation |
 | litellm | 4100 | unifying OpenAI-compatible gateway in front of everything |
-| vllm | 8100 | **qwen3-235b** (Qwen3-235B-A22B-Instruct-2507-FP8) |
-| coder | 8800 | **qwen3-coder-480b** (Qwen3-Coder-480B-A35B-Instruct-FP8) |
-| vlm | 8600 | vision model slot (Qwen2.5-VL-7B) — currently not deployed |
+| vllm | 8100 | **qwen3-235b** (Qwen3-235B-A22B-Instruct-2507-FP8), always-on |
+| coder | 8800 | **qwen3-coder-480b**, on-demand (§4a) — `coder start/status/stop` |
+| coder-watch | - | idle-timeout auto-stop for `coder` (§4a) |
 | comfyui | 8288 | image/video generation UI |
+| comfyui-watch | - | idle VRAM release for `comfyui`, process stays up (§4a.1) |
 | moto | 5100 | AWS API emulator |
 | cloudflared | - | outbound tunnel, public hostnames configured in Cloudflare dashboard |
 
@@ -128,7 +130,6 @@ As of 2026-09-09, `restore-all.sh` also handles:
   link at the same time).
 
 What still has no automation:
-- **Vision model (`vlm`)** — deprioritized, not currently deployed at all.
 - **SGLang** — see §6, not installed.
 
 For total loss — `~/hpc-stack` itself gone, not just `$WORK` — see
