@@ -123,7 +123,18 @@ fi
 export N8N_HOST=127.0.0.1
 export N8N_LISTEN_ADDRESS=127.0.0.1
 export N8N_PROTOCOL=http
-export WEBHOOK_URL="http://localhost:${N8N_PORT}/"
+# n8n builds EVERY externally-facing URL it generates from this one var -
+# webhooks AND the OAuth2 credential callback both come from it (confirmed
+# 2026-09-09: Gmail OAuth2 setup was redirecting to localhost:5778 because
+# of this exact default). If n8n is reachable via a public Cloudflare
+# hostname (see KNOWLEDGE.md §3's Public Hostnames list) and you need
+# OAuth or externally-triggered webhooks to work, override this to that
+# hostname: export WEBHOOK_URL="https://agents.punith.tech/" before
+# sourcing this file, or edit the default below. Leave as localhost if
+# n8n is SSH-tunnel-only - a public WEBHOOK_URL is useless without a
+# matching Cloudflare Public Hostname route actually pointing at it.
+: "${WEBHOOK_URL:=https://agents.punith.tech/}"
+export WEBHOOK_URL
 export N8N_SECURE_COOKIE=false                  # required over plain-http tunnel
 export N8N_DIAGNOSTICS_ENABLED=false
 export N8N_RUNNERS_ENABLED=true

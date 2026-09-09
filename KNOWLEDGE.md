@@ -72,11 +72,14 @@ routing is free and needs no policy):
 - `openweb.punith.tech` → 127.0.0.1:8180 (webui)
 - `llm.punith.tech` → 127.0.0.1:4100 (litellm)
 - `comfy.punith.tech` → 127.0.0.1:8288 (comfyui)
+- `agents.punith.tech` → 127.0.0.1:5778 (n8n) — added 2026-09-09, needed a
+  matching `WEBHOOK_URL` change to work at all, see §5.12
 
 None of these have real auth in front of them beyond LiteLLM's API key
-(webui and comfyui have none at all beyond their own login/nothing) —
-acceptable only because a Cloudflare Access policy costs money on this
-account. If that changes, put one back in front of `comfy.punith.tech`
+and n8n's own owner-account login (webui and comfyui have none at all
+beyond their own login/nothing) — acceptable only because a Cloudflare
+Access policy costs money on this account. If that changes, put one back
+in front of `comfy.punith.tech`
 especially (zero auth, generates on H200s, worst one to leave open).
 
 ## 4. Disaster recovery — `restore-all.sh`
@@ -410,6 +413,25 @@ A second, stale, out-of-date copy of the hpc-stack scripts existed at
 litellm-config-regeneration bug from §5.8). Nothing under `~/home/` was
 ever the canonical copy; `~/hpc-stack/` always is. If in doubt about which
 copy of a script is real, canonical location is always `~/hpc-stack/`.
+
+### 5.12 n8n OAuth2 callback redirects to `localhost` instead of the public hostname
+Setting up Gmail (or any) OAuth2 credential in n8n: Google auth succeeds,
+then the browser gets sent to `http://localhost:5778/rest/oauth2-credential/callback`
+— `ERR_CONNECTION_REFUSED`, since nothing public is listening there.
+Google itself may also reject the initial request with `Error 400:
+redirect_uri_mismatch`, since the URI n8n registered with Google was the
+localhost one. **Root cause: `WEBHOOK_URL`.** n8n builds every
+externally-facing URL it generates — webhooks *and* the OAuth2 callback,
+confirmed via `/rest/settings`'s `oidc.loginUrl` changing identically —
+from this one env var, and the stack's original default
+(`http://localhost:${N8N_PORT}/`) was correct only for the SSH-tunnel-only
+setup this was first built for. **Fix: set `WEBHOOK_URL` to the actual
+public hostname** (`https://agents.punith.tech/` as of 2026-09-09),
+restart n8n (env changes need a restart to take effect, same as any other
+service here), and — the other half, easy to miss — **add the new
+callback URL to the OAuth client's Authorized redirect URIs in Google
+Cloud Console**: `https://agents.punith.tech/rest/oauth2-credential/callback`.
+Both sides have to agree on the same URI or Google keeps rejecting it.
 
 ## 6. Model choices and why
 
