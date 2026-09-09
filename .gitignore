@@ -1,0 +1,9 @@
+# secrets - never commit these
+.hf_token
+.litellm_master_key
+.cloudflare_tunnel_token
+.n8n_owner_password
+.webui_new_password
+# safety net: ignore all dotfiles by default, KNOWLEDGE.md/README.md/.gitignore are not dotfiles so unaffected
+.*
+!.gitignore

@@ -1,0 +1,62 @@
+# =============================================================================
+# Put this in ~/.ssh/config ON YOUR LAPTOP (not on the cluster).
+# Then a single command gives you every service in your local browser:
+#
+#     ssh -N gpu-tunnel
+#
+# -N means "no shell, just forward". Leave it running in a terminal.
+# Open http://localhost:8080 (chat), http://localhost:5678 (n8n).
+#
+# Fill in <MASTER_HOSTNAME_OR_IP> and <USERNAME> before use.
+# =============================================================================
+
+Host sastra-master
+    HostName          <MASTER_HOSTNAME_OR_IP>
+    User              <USERNAME>
+    ServerAliveInterval 30
+    ServerAliveCountMax 6
+    # Reuse one TCP connection for all sessions - much faster reconnects.
+    ControlMaster     auto
+    ControlPath       ~/.ssh/cm-%r@%h:%p
+    ControlPersist    10m
+
+# Interactive shell on the GPU node, hopping through the master.
+Host dgx-node1
+    HostName          dgx-node1
+    User              <USERNAME>
+    ProxyJump         sastra-master
+    ServerAliveInterval 30
+
+# Same host, but dedicated to forwarding. Keeping it separate means you can
+# kill/restart the tunnel without killing your working shell.
+Host gpu-tunnel
+    HostName          dgx-node1
+    User              <USERNAME>
+    ProxyJump         sastra-master
+    ServerAliveInterval 30
+    ServerAliveCountMax 6
+    ExitOnForwardFailure yes
+
+    # This deployment runs with HPC_PORT_OFFSET=100 (dgx-node1's default
+    # ollama port was already taken by another user) - ports below are the
+    # base port + 100. Forward the SAME port on both sides so URLs match
+    # what the services themselves report (WEBHOOK_URL, OLLAMA_HOST, etc).
+    LocalForward      8180  127.0.0.1:8180     # Open-WebUI
+    LocalForward      5778  127.0.0.1:5778     # n8n
+    LocalForward      11534 127.0.0.1:11534    # Ollama raw API
+    LocalForward      4100  127.0.0.1:4100     # LiteLLM gateway
+    LocalForward      5100  127.0.0.1:5100     # Moto (local AWS emulator)
+    LocalForward      8988  127.0.0.1:8988     # Jupyter, if you add it
+
+# -----------------------------------------------------------------------------
+# If ProxyJump is blocked, the two-hop fallback is:
+#
+#   Terminal 1:  ssh -L 8080:localhost:8080 -L 5678:localhost:5678 \
+#                    -L 11434:localhost:11434 <USER>@<MASTER>
+#   Terminal 2 (inside that session):
+#                ssh -L 8080:localhost:8080 -L 5678:localhost:5678 \
+#                    -L 11434:localhost:11434 dgx-node1
+#
+# ExitOnForwardFailure yes is deliberate: if port 8080 is busy on your laptop,
+# you want a loud error, not a tunnel that silently forwards nothing.
+# -----------------------------------------------------------------------------
