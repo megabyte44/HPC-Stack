@@ -44,7 +44,7 @@ sastra-master-node + dgx-node1 (shared NFS $HOME)
         ├── svc.sh                     [git]  process supervisor: start/stop/restart/status/logs/pull
         ├── doctor.sh                  [git]  health check + $HOME leak check + exposure audit
         ├── restore-all.sh             [git]  disaster recovery after a $WORK wipe (reboot)
-        ├── fix-webui-toolcalling.sh   [git]  reapplies the §5.4 tool-calling override
+        ├── fix-webui-toolcalling.sh   [git]  reapplies §5.4 tool-calling override + publishes models to non-admin users
         ├── coder-ctl.sh               [git]  on-demand qwen3-coder-480b: coder start/status/stop
         ├── vllm-ctl.sh                [git]  always-on qwen3-235b, manual control: general start/status/stop
         ├── coder-idle-watch.sh        [git]  auto-stops coder after idle timeout (§4a)

@@ -172,15 +172,34 @@ export HPC_KEEPALIVE_INTERVAL
 
 # ---- coder-ctl.sh (on-demand qwen3-coder-480b, no Slurm on this node - see
 # KNOWLEDGE.md §4a) ----------------------------------------------------------
-: "${CODER_IDLE_TIMEOUT:=900}"           # seconds with no requests before auto-stop (15m)
-: "${CODER_GPU_FREE_THRESHOLD_MIB:=2000}" # a GPU below this used-MiB counts as "free" to claim
-: "${CODER_POLL_INTERVAL:=60}"           # seconds between idle-watch checks
-export CODER_IDLE_TIMEOUT CODER_GPU_FREE_THRESHOLD_MIB CODER_POLL_INTERVAL
+# GPU picking is capacity-aware, not a flat "touched at all" threshold (that
+# older approach once refused GPUs with 130GB+ genuinely free just because
+# another user had a few GB resident - see KNOWLEDGE.md §4a.3). A GPU
+# qualifies if it has at least CODER_GPU_MIN_FREE_MIB free AND its compute
+# utilization is at/below CODER_GPU_MAX_UTIL_PCT (skips GPUs someone is
+# actively computing on even if memory would technically fit); among
+# qualifying GPUs, the ones with the most free memory are picked first.
+# Default min-free assumes CODER_EXTRA_ARGS' default --gpu-memory-utilization
+# 0.90 on a 143771 MiB H200 (~129GB) plus headroom - lower it if you also
+# lower that arg.
+: "${CODER_IDLE_TIMEOUT:=900}"          # seconds with no requests before auto-stop (15m)
+: "${CODER_GPU_MIN_FREE_MIB:=132000}"   # a GPU needs at least this much free to be a candidate
+: "${CODER_GPU_MAX_UTIL_PCT:=50}"       # skip GPUs above this compute utilization %, even if memory fits
+: "${CODER_POLL_INTERVAL:=60}"          # seconds between idle-watch checks
+export CODER_IDLE_TIMEOUT CODER_GPU_MIN_FREE_MIB CODER_GPU_MAX_UTIL_PCT CODER_POLL_INTERVAL
 
 # ---- vllm-ctl.sh (qwen3-235b, general-purpose - always-on by design, NO
 # idle-timeout; manual start/stop only via 'general start/status/stop') ----
-: "${VLLM_GPU_FREE_THRESHOLD_MIB:=2000}" # a GPU below this used-MiB counts as "free" to claim
-export VLLM_GPU_FREE_THRESHOLD_MIB
+# Same capacity-aware picking as coder-ctl.sh - see KNOWLEDGE.md §4a.3.
+# Default min-free assumes VLLM_EXTRA_ARGS' default --gpu-memory-utilization
+# 0.92 (~132GB target on a 143771 MiB H200) plus headroom. Do NOT "fix" a
+# tight-KV-cache failure by lowering --gpu-memory-utilization on a retry -
+# that shrinks the total budget and starves the KV cache further (this
+# exact mistake happened once, see §4a.3). Pick a GPU with more free
+# memory instead; leave gpu-memory-utilization at its proven default.
+: "${VLLM_GPU_MIN_FREE_MIB:=135000}"  # a GPU needs at least this much free to be a candidate
+: "${VLLM_GPU_MAX_UTIL_PCT:=50}"      # skip GPUs above this compute utilization %, even if memory fits
+export VLLM_GPU_MIN_FREE_MIB VLLM_GPU_MAX_UTIL_PCT
 
 # ---- comfyui-idle-watch.sh (VRAM release, not process stop) ---------------
 # ComfyUI's own process is cheap to leave running (no boot-time model

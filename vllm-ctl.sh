@@ -31,11 +31,33 @@ is_vllm_up() {
   [[ -f "$HPC_RUN/vllm.pid" ]] && kill -0 "$(cat "$HPC_RUN/vllm.pid" 2>/dev/null)" 2>/dev/null
 }
 
+# GPUs dedicated to another always-on service - see the matching comment
+# in coder-ctl.sh / KNOWLEDGE.md §4a.3 for why this exists.
+reserved_gpus() {
+  local out=""
+  if [[ -f "$HPC_RUN/comfyui.pid" ]] && kill -0 "$(cat "$HPC_RUN/comfyui.pid" 2>/dev/null)" 2>/dev/null; then
+    out="$(tr '\0' '\n' < "/proc/$(cat "$HPC_RUN/comfyui.pid")/environ" 2>/dev/null | grep '^CUDA_VISIBLE_DEVICES=' | cut -d= -f2)"
+  fi
+  echo "$out"
+}
+
+# Picks N GPUs by real headroom, not a flat "touched at all" threshold -
+# see the matching comment in coder-ctl.sh / KNOWLEDGE.md §4a.3 for why.
 pick_free_gpus() {
-  local need="$1" thresh="$VLLM_GPU_FREE_THRESHOLD_MIB"
-  nvidia-smi --query-gpu=index,memory.used --format=csv,noheader,nounits 2>/dev/null \
-    | awk -F',' -v t="$thresh" '{gsub(/ /,"",$2); if ($2+0 < t) print $1}' \
-    | head -n "$need" | paste -sd, -
+  local need="$1" minfree="$VLLM_GPU_MIN_FREE_MIB" maxutil="$VLLM_GPU_MAX_UTIL_PCT"
+  local exclude; exclude="$(reserved_gpus)"
+  nvidia-smi --query-gpu=index,memory.used,memory.total,utilization.gpu --format=csv,noheader,nounits 2>/dev/null \
+    | awk -F',' -v minfree="$minfree" -v maxutil="$maxutil" -v excl="$exclude" '
+        BEGIN { n = split(excl, ex, ","); for (i = 1; i <= n; i++) { gsub(/ /,"",ex[i]); skip[ex[i]] = 1 } }
+        {
+          gsub(/ /,"",$1); gsub(/ /,"",$2); gsub(/ /,"",$3); gsub(/ /,"",$4);
+          if ($1 in skip) next;
+          free = $3 - $2;
+          if (free >= minfree && $4+0 <= maxutil) print free, $1;
+        }' \
+    | sort -rn -k1,1 \
+    | awk -v need="$need" 'NR<=need{print $2}' \
+    | paste -sd, -
 }
 
 cmd_start() {
@@ -50,7 +72,7 @@ cmd_start() {
     picked="$VLLM_GPUS"
     log "using manually-set VLLM_GPUS=$picked (skipping auto-pick)"
   else
-    log "checking nvidia-smi for ${want} free GPU(s) (< ${VLLM_GPU_FREE_THRESHOLD_MIB} MiB used)..."
+    log "checking nvidia-smi for ${want} GPU(s) with >= ${VLLM_GPU_MIN_FREE_MIB} MiB free and <= ${VLLM_GPU_MAX_UTIL_PCT}% utilization..."
     picked="$(pick_free_gpus "$want")"
     local n=0; [[ -n "$picked" ]] && n=$(( $(grep -o ',' <<<"$picked" | wc -l) + 1 ))
     if (( n < want )); then

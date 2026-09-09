@@ -35,14 +35,42 @@ is_coder_up() {
   [[ -f "$HPC_RUN/coder.pid" ]] && kill -0 "$(cat "$HPC_RUN/coder.pid" 2>/dev/null)" 2>/dev/null
 }
 
-# Picks N GPUs currently under CODER_GPU_FREE_THRESHOLD_MIB used memory -
-# doesn't care whose usage it is, ours or another user's. Prints nothing and
-# returns fewer than needed if not enough are free; caller must check count.
+# GPUs dedicated to another always-on service - never pick these even if
+# they show plenty of free memory right now. comfyui only uses its GPU
+# during an actual generation (KNOWLEDGE.md §4a.1), so it can look
+# deceptively idle between jobs; colocating a huge LLM there would starve
+# whichever one loads second the next time both are active.
+reserved_gpus() {
+  local out=""
+  if [[ -f "$HPC_RUN/comfyui.pid" ]] && kill -0 "$(cat "$HPC_RUN/comfyui.pid" 2>/dev/null)" 2>/dev/null; then
+    out="$(tr '\0' '\n' < "/proc/$(cat "$HPC_RUN/comfyui.pid")/environ" 2>/dev/null | grep '^CUDA_VISIBLE_DEVICES=' | cut -d= -f2)"
+  fi
+  echo "$out"
+}
+
+# Picks N GPUs by real headroom, not a flat "touched at all" threshold -
+# a GPU qualifies if it has >= CODER_GPU_MIN_FREE_MIB free AND its compute
+# utilization is <= CODER_GPU_MAX_UTIL_PCT (skips a GPU someone is actively
+# computing on even if memory would fit), and isn't in reserved_gpus; among
+# qualifying GPUs, the ones with the most free memory are picked first.
+# Doesn't care whose usage it is, ours or another user's - never touches a
+# GPU that doesn't qualify. Prints nothing and returns fewer than needed
+# if not enough qualify; caller must check count.
 pick_free_gpus() {
-  local need="$1" thresh="$CODER_GPU_FREE_THRESHOLD_MIB"
-  nvidia-smi --query-gpu=index,memory.used --format=csv,noheader,nounits 2>/dev/null \
-    | awk -F',' -v t="$thresh" '{gsub(/ /,"",$2); if ($2+0 < t) print $1}' \
-    | head -n "$need" | paste -sd, -
+  local need="$1" minfree="$CODER_GPU_MIN_FREE_MIB" maxutil="$CODER_GPU_MAX_UTIL_PCT"
+  local exclude; exclude="$(reserved_gpus)"
+  nvidia-smi --query-gpu=index,memory.used,memory.total,utilization.gpu --format=csv,noheader,nounits 2>/dev/null \
+    | awk -F',' -v minfree="$minfree" -v maxutil="$maxutil" -v excl="$exclude" '
+        BEGIN { n = split(excl, ex, ","); for (i = 1; i <= n; i++) { gsub(/ /,"",ex[i]); skip[ex[i]] = 1 } }
+        {
+          gsub(/ /,"",$1); gsub(/ /,"",$2); gsub(/ /,"",$3); gsub(/ /,"",$4);
+          if ($1 in skip) next;
+          free = $3 - $2;
+          if (free >= minfree && $4+0 <= maxutil) print free, $1;
+        }' \
+    | sort -rn -k1,1 \
+    | awk -v need="$need" 'NR<=need{print $2}' \
+    | paste -sd, -
 }
 
 cmd_start() {
@@ -57,7 +85,7 @@ cmd_start() {
     picked="$CODER_GPUS"
     log "using manually-set CODER_GPUS=$picked (skipping auto-pick)"
   else
-    log "checking nvidia-smi for ${want} free GPU(s) (< ${CODER_GPU_FREE_THRESHOLD_MIB} MiB used)..."
+    log "checking nvidia-smi for ${want} GPU(s) with >= ${CODER_GPU_MIN_FREE_MIB} MiB free and <= ${CODER_GPU_MAX_UTIL_PCT}% utilization..."
     picked="$(pick_free_gpus "$want")"
     local n=0; [[ -n "$picked" ]] && n=$(( $(grep -o ',' <<<"$picked" | wc -l) + 1 ))
     if (( n < want )); then

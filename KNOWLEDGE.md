@@ -162,14 +162,14 @@ checked directly:
 
 Given that, `coder-ctl.sh` (`coder start` / `coder status` / `coder stop`,
 aliased via `bashrc-snippet.sh`) implements the closest honest equivalent:
-a fresh `nvidia-smi` free-GPU pick (below `CODER_GPU_FREE_THRESHOLD_MIB`,
-default 2000 MiB used) at every start — the exact same check every other
-user on this box already does by hand, just automatic and never stale.
-**This is not scheduler-enforced isolation** — nothing on this node
-provides that — it's best-effort coexistence, same guarantee level as
-everything else here. If it finds fewer free GPUs than `CODER_TP_SIZE`
-needs, it refuses to start rather than guessing or waiting; it never
-touches a GPU another process (ours or anyone else's) already has memory
+a fresh `nvidia-smi` free-GPU pick (capacity-aware, not a flat threshold —
+see §4a.3) at every start — the exact same check every other user on this
+box already does by hand, just automatic and never stale. **This is not
+scheduler-enforced isolation** — nothing on this node provides that —
+it's best-effort coexistence, same guarantee level as everything else
+here. If it finds fewer free GPUs than `CODER_TP_SIZE` needs, it refuses
+to start rather than guessing or waiting; it never touches a GPU another
+process (ours or anyone else's) already has memory
 on.
 
 Idle shutdown: `coder-idle-watch.sh` runs as the `coder-watch` svc.sh
@@ -242,6 +242,52 @@ vLLM CLI binary on `$PATH`; aliasing over it would shadow it.
 `restore-all.sh` calls `vllm-ctl.sh start` for the same reason it calls
 `coder-ctl.sh start` — a hardcoded `VLLM_GPUS` default already went
 stale once (§4a), no reason to keep that risk for this one too.
+
+### 4a.3 GPU picker: capacity-aware, not a flat "touched at all" threshold
+
+The first version of `pick_free_gpus()` (both `coder-ctl.sh` and
+`vllm-ctl.sh`) required a GPU's *used* memory to be under a flat 2000 MiB
+to count as a candidate. Confirmed broken 2026-09-09: with two other
+users running light jobs spread thinly across GPUs 2–7 (a few GB each,
+nowhere near their 143771 MiB capacity), the picker found only 1
+"qualifying" GPU and refused to start `qwen3-235b` — while GPUs 2 and 6
+individually had **136GB+ genuinely free**. The threshold was answering
+the wrong question ("is this GPU touched at all") instead of the one
+that actually matters ("is there enough room, and is anyone actively
+computing on it").
+
+Fixed: `pick_free_gpus()` now ranks by real headroom. A GPU qualifies if
+`free (total - used) >= *_GPU_MIN_FREE_MIB` **and** its compute
+utilization is `<= *_GPU_MAX_UTIL_PCT` (default 50 — skips a GPU someone
+is actively computing on even if the memory would technically fit,
+since heavy compute contention hurts both jobs regardless of VRAM
+headroom); among qualifying GPUs, the ones with the most free memory are
+picked first. Also now excludes any GPU already dedicated to another
+always-on service of ours (`reserved_gpus()` — currently just `comfyui`'s
+GPU, read live from its process env, not a static config value) — it can
+look deceptively idle between generations (§4a.1's VRAM-release watcher)
+but colocating a huge LLM there would starve whichever loads second the
+next time both are active.
+
+**A related mistake made live in the same incident, worth recording
+separately since it's a different failure mode:** after the flat
+threshold rejected everything, GPUs were picked manually and
+`--gpu-memory-utilization` was lowered from `qwen3-235b`'s default 0.92
+to 0.85, intending it as a "safety margin." That was backwards — it
+shrank vLLM's total memory budget, and after ~117GB of weights (TP=2)
+there was only 1.42GiB left for KV cache when 32768 max-model-len needs
+2.94GiB: `ValueError: ... KV cache is needed, which is larger than the
+available KV cache memory`. The two GPUs actually had 136GB free each —
+comfortably enough for the *default* 0.92 target (~132GB) — the real fix
+was picking better GPUs, not shrinking the utilization target. §5.9a's
+existing advice ("prefer lowering `max_model_len` over raising
+`gpu_memory_utilization` when fighting a growing neighbor") is about a
+different scenario (recovering headroom against a tenant that's
+currently growing); it doesn't mean lower utilization on a fresh start
+against a static amount of neighbor usage — that just starves your own
+KV cache. **Leave `--gpu-memory-utilization` at its proven default and
+fix GPU selection instead**, which is exactly what this section's picker
+change does automatically now.
 
 ## 5. Mistakes made and what actually fixed them
 
