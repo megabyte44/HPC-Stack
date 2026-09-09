@@ -107,6 +107,18 @@ export WEBUI_SECRET_KEY_FILE="$HPC_APPS/open-webui/.secret"
 # these ports may end up reachable beyond the SSH tunnel (e.g. a Cloudflare
 # tunnel) and open-webui has no other gate against strangers self-registering.
 export ENABLE_SIGNUP=false
+# Auto-wire webui to litellm so qwen3-235b/qwen3-coder-480b (vLLM, not
+# Ollama) show up in the model picker without manually adding a Connection
+# in the Admin UI every time webui.db gets rebuilt - Ollama models come in
+# for free via OLLAMA_BASE_URL above, this is the same idea for everything
+# behind litellm. No-op (webui just won't list them) until litellm has been
+# installed at least once, i.e. its master key file exists.
+export ENABLE_OPENAI_API=true
+export OPENAI_API_BASE_URLS="http://127.0.0.1:${LITELLM_PORT}/v1"
+LITELLM_MASTER_KEY_FILE="$HOME/hpc-stack/.litellm_master_key"
+if [[ -f "$LITELLM_MASTER_KEY_FILE" ]]; then
+  export OPENAI_API_KEYS="$(cat "$LITELLM_MASTER_KEY_FILE")"
+fi
 
 # ---- n8n runtime ----------------------------------------------------------
 export N8N_HOST=127.0.0.1

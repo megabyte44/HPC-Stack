@@ -313,7 +313,35 @@ copy of a script is real, canonical location is always `~/hpc-stack/`.
   torch/CUDA compatibility matrix before installing, don't assume the vLLM
   0.11.0 pin transfers over.
 
-## 7. Onboarding prompt for a new session
+## 7. Concurrency — how many people can this stack serve at once
+
+- **LiteLLM itself imposes no concurrency limit.** It's a stateless async
+  proxy/router — it doesn't do inference, it just forwards each request to
+  whichever backend the `model_list` entry points at, so it happily handles
+  many simultaneous requests from many people. Whatever limit exists comes
+  from the backend behind it, not from LiteLLM.
+- **vLLM (`qwen3-235b`, `qwen3-coder-480b`) is built for exactly this** —
+  continuous batching serves multiple concurrent requests together rather
+  than queueing them one at a time. Several people can hit either model
+  through LiteLLM at once; what degrades under load isn't request handling,
+  it's available KV cache (see §5.9a) — more concurrent conversations means
+  less context headroom per conversation, tunable via `--max-model-len` /
+  `--gpu-memory-utilization` in `VLLM_EXTRA_ARGS`/`CODER_EXTRA_ARGS`.
+- **Ollama (small fallback models) does not batch the same way.**
+  `OLLAMA_NUM_PARALLEL=2` (`00-env.sh`) caps it at 2 concurrent requests per
+  loaded model — a 3rd concurrent request queues behind the first two. Fine
+  for personal use + light n8n glue traffic, a real bottleneck if several
+  people lean on `llama3.2:3b`/`qwen2.5-coder:7b` at the same time. The big
+  vLLM models don't have this ceiling.
+- **Everyone currently shares one LiteLLM key** (`master_key` in
+  `$WORK/apps/litellm/config.yaml`) — no per-person usage tracking or
+  budgets. If more than one real person is going to use this, LiteLLM can
+  issue separate virtual keys per person (`/key/generate`, or its own UI at
+  `http://127.0.0.1:4100/ui`) each with its own rate/budget limits, instead
+  of everyone sharing the master key with full access. Not set up yet —
+  worth doing before handing the endpoint to anyone else.
+
+## 8. Onboarding prompt for a new session
 
 Paste this at the start of a new Claude Code session working on this stack:
 

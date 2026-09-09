@@ -142,6 +142,24 @@ Add LiteLLM (`svc start litellm`, port 4000) when you want one endpoint that
 fronts several models with real API keys, per-key budgets and request logging.
 Edit `$WORK/apps/litellm/config.yaml` and change `master_key` before you rely on it.
 
+## Talking to qwen3-235b / qwen3-coder-480b from Open-WebUI
+
+The two big models run under vLLM, not Ollama, so `OLLAMA_BASE_URL` never
+sees them — Open-WebUI needs a *second*, OpenAI-style connection for that.
+`00-env.sh` sets `ENABLE_OPENAI_API`/`OPENAI_API_BASE_URLS`/`OPENAI_API_KEYS`
+to point at LiteLLM (`http://127.0.0.1:4100/v1`, offset ports) automatically,
+so as long as `litellm` and `vllm`/`coder` are all up (`svc status`), both
+big models just appear in webui's model picker — no manual "Add Connection"
+click needed, and it survives a `webui.db` rebuild since it's env-driven,
+not stored state. If they don't show up: confirm `svc status` shows
+`litellm` up and `.litellm_master_key` exists, then restart webui
+(`svc restart webui`) so it re-reads the env.
+
+For tool-calling / agent use specifically, `qwen3-235b` needs the same
+`legacy` function-calling override as the small Ollama models (its
+`qwen3_xml` parser is buggy — KNOWLEDGE.md §5.4); `fix-webui-toolcalling.sh`
+covers all three. `qwen3-coder-480b` doesn't need it.
+
 ## Wiring n8n to the model
 
 Inside n8n, everything is node-local, so **do not** use the tunnel:

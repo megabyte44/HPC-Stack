@@ -21,7 +21,11 @@ err() { printf '\033[1;31m[webui-fix]\033[0m %s\n' "$*" >&2; }
 [[ "$(hostname -s)" == "$HPC_GPU_NODE" ]] || { exec ssh -t "$HPC_GPU_NODE" "bash \$HOME/hpc-stack/fix-webui-toolcalling.sh $*"; }
 
 DB="$DATA_DIR/webui.db"
-MODELS=(qwen2.5-coder:7b llama3.2:3b)
+# qwen2.5-coder:7b / llama3.2:3b (Ollama): no real structured tool-calling.
+# qwen3-235b (vLLM): its qwen3_xml tool-call parser is buggy (KNOWLEDGE.md
+# §5.4) - same workaround. qwen3-coder-480b is NOT in this list on purpose:
+# its dedicated qwen3_coder parser works correctly, no override needed.
+MODELS=(qwen2.5-coder:7b llama3.2:3b qwen3-235b)
 
 if [[ ! -f "$DB" ]]; then
   log "no webui.db yet at $DB - nothing to fix. Start webui and sign up first."
