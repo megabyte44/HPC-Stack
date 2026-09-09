@@ -24,6 +24,62 @@ Everything binds to loopback. The only way in is your SSH tunnel, which means
 you get authentication for free and you are not exposing a model endpoint to
 everyone else on the cluster.
 
+## File map
+
+```
+sastra-master-node + dgx-node1 (shared NFS $HOME)
+│
+└── ~/                                               ← your NFS home, permanent, backed up nowhere but here + GitHub
+    │
+    └── hpc-stack/                                    ← the whole knowledge base (~200 KB)
+        │
+        ├── README.md                 [git]  operator guide: architecture, install order, daily use (this file)
+        ├── KNOWLEDGE.md               [git]  runbook: mistakes made, fixes, model choices, quick reference
+        ├── BOOTSTRAP.md               [git]  total-loss recovery, no AI needed
+        ├── .gitignore                 [git]  excludes the 5 secret files below, on purpose
+        │
+        ├── 00-env.sh                  [git]  single source of truth: every path/port/env var
+        ├── 10-toolchain.sh            [git]  installs ollama, node, uv onto $WORK
+        ├── 20-apps.sh                 [git]  installs open-webui, n8n, litellm, moto, cloudflared
+        ├── svc.sh                     [git]  process supervisor: start/stop/restart/status/logs/pull
+        ├── doctor.sh                  [git]  health check + $HOME leak check + exposure audit
+        ├── restore-all.sh             [git]  disaster recovery after a $WORK wipe (reboot)
+        ├── fix-webui-toolcalling.sh   [git]  reapplies the §5.4 tool-calling override
+        ├── keepalive.sh               [git]  touches $WORK so idle-reaper doesn't sweep it
+        ├── bashrc-snippet.sh          [git]  wires env vars + aliases (svc, doctor, gpu) into .bashrc
+        ├── laptop-ssh-config.example  [git]  SSH tunnel config template for YOUR laptop
+        │
+        ├── .hf_token                  [local only]  HuggingFace token — re-fetchable from hf.co/settings/tokens
+        ├── .litellm_master_key        [local only]  auto-regenerates if missing, no action needed
+        ├── .cloudflare_tunnel_token   [local only]  re-fetchable from Cloudflare Zero Trust dashboard
+        ├── .n8n_owner_password        [local only]  your own note of the n8n signup password — irrecoverable if lost
+        ├── .webui_new_password        [local only]  your own note of the Open-WebUI admin password — same
+        └── .git/                                    pushed to github.com/megabyte44/HPC-Stack
+
+/tmp/hackathon01_work/  ($WORK — node-local on dgx-node1 ONLY, does NOT survive reboot)
+│
+├── opt/            toolchains: ollama, node, uv, uv-managed python, uv-tools (vllm, litellm, open-webui...)
+│   └── bin/         every installed executable lands here (on PATH)
+├── apps/           app state
+│   ├── open-webui/  webui.db (chat history, users, model overrides)
+│   ├── n8n/         .n8n/database.sqlite (workflows, credentials)
+│   ├── litellm/     config.yaml (model routing, master key)
+│   └── comfyui/     ComfyUI clone + venv (only present if `restore-all.sh --comfyui` was run)
+├── cache/          pip, npm, uv, triton, nv, matplotlib, etc. — everything redirected off $HOME
+├── models/         ollama blobs + HF hub cache (this is the multi-hundred-GB stuff)
+├── logs/           one .log per service (`svc.sh logs <name>` tails these)
+├── run/            pid files (svc.sh's bookkeeping)
+└── venvs/
+```
+
+The `[git]` tag means it's tracked and pushed to GitHub — recoverable with
+`git clone` alone. `[local only]` means it exists only on this NFS home and
+is excluded from git on purpose (`.gitignore`) — see `BOOTSTRAP.md` §2 for
+which of those auto-regenerate, which are re-fetchable from an external
+dashboard, and which are gone for good if you don't back them up yourself.
+The `$WORK` tree is node-local to `dgx-node1` and rebuilt from scratch by
+`restore-all.sh` any time it's wiped.
+
 ## Install order
 
 ```bash
