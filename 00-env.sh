@@ -160,6 +160,13 @@ export MOTO_HOST=127.0.0.1
 : "${HPC_KEEPALIVE_INTERVAL:=21600}"   # seconds between touch sweeps (6h)
 export HPC_KEEPALIVE_INTERVAL
 
+# ---- coder-ctl.sh (on-demand qwen3-coder-480b, no Slurm on this node - see
+# KNOWLEDGE.md §4a) ----------------------------------------------------------
+: "${CODER_IDLE_TIMEOUT:=1800}"          # seconds with no requests before auto-stop (30m)
+: "${CODER_GPU_FREE_THRESHOLD_MIB:=2000}" # a GPU below this used-MiB counts as "free" to claim
+: "${CODER_POLL_INTERVAL:=60}"           # seconds between idle-watch checks
+export CODER_IDLE_TIMEOUT CODER_GPU_FREE_THRESHOLD_MIB CODER_POLL_INTERVAL
+
 # ---- PATH -----------------------------------------------------------------
 _hpc_path_add() { case ":$PATH:" in *":$1:"*) ;; *) PATH="$1:$PATH" ;; esac; }
 _hpc_path_add "$NPM_CONFIG_PREFIX/bin"

@@ -135,6 +135,67 @@ For total loss — `~/hpc-stack` itself gone, not just `$WORK` — see
 `BOOTSTRAP.md`. That is the doc to follow with zero prior context and no
 AI assistance; this file assumes `~/hpc-stack` still exists.
 
+## 4a. On-demand `coder` (qwen3-coder-480b) — no permanent GPU pinning
+
+Confirmed 2026-09-09: **Slurm cannot be used to schedule anything on
+`dgx-node1`.** This isn't a policy choice, it's a hard technical fact,
+checked directly:
+
+- `scontrol show node dgx-node1` → `Node dgx-node1 not found`. Slurm's
+  actual configured nodes (`/etc/slurm/slurm.conf`) are `gpunode1`
+  (172.16.13.102) and `gpunode2` (172.16.13.103) — **different physical
+  machines** from `dgx-node1` (172.16.13.91). Neither is usable anyway:
+  `gpunode1` is `drained` ("Kill task failed"), `gpunode2` is `inval`.
+- `dgx-node1` has **no `slurmd` and no `munge`** installed at all
+  (`Unit slurmd.service could not be found`) — there's no daemon on this
+  box to even receive an `srun`/`sbatch` request.
+- `squeue` is empty cluster-wide. Every process on `dgx-node1` right now —
+  ours and every other user's (Schrödinger jobs, jupyter kernels, other
+  people's own raw `vllm serve` processes) — is a plain unscheduled SSH
+  process, not a Slurm job. This is *why* §5.6's "always re-check
+  `nvidia-smi` before picking GPUs" rule exists — there is no enforcement
+  layer here at all, for anyone, not just us.
+
+Given that, `coder-ctl.sh` (`coder start` / `coder status` / `coder stop`,
+aliased via `bashrc-snippet.sh`) implements the closest honest equivalent:
+a fresh `nvidia-smi` free-GPU pick (below `CODER_GPU_FREE_THRESHOLD_MIB`,
+default 2000 MiB used) at every start — the exact same check every other
+user on this box already does by hand, just automatic and never stale.
+**This is not scheduler-enforced isolation** — nothing on this node
+provides that — it's best-effort coexistence, same guarantee level as
+everything else here. If it finds fewer free GPUs than `CODER_TP_SIZE`
+needs, it refuses to start rather than guessing or waiting; it never
+touches a GPU another process (ours or anyone else's) already has memory
+on.
+
+Idle shutdown: `coder-idle-watch.sh` runs as the `coder-watch` svc.sh
+service, polling vLLM's own `/metrics` (`vllm:request_success_total`
+counter, `vllm:num_requests_running` gauge — not log timestamps, vLLM
+logs periodic stats lines even at zero traffic, which would make a
+log-mtime check never fire) every `CODER_POLL_INTERVAL` (60s default). No
+activity for `CODER_IDLE_TIMEOUT` (1800s/30m default) → `svc.sh stop
+coder`, GPUs released. `coder-ctl.sh start` arms a fresh watcher every
+time; `coder stop` tears both down together.
+
+Known limitation, not hidden: a cold start loads ~450GB from disk into
+VRAM, which takes real minutes (`coder start` polls `/health` for up to
+20 minutes before giving up) — the first request after an idle-stop will
+be slow. That's the actual cost of not permanently pinning 4 H200s; there
+is no way to make disk→VRAM loading of a 480B-parameter model instant.
+
+**Storage stayed on `/tmp` deliberately, not moved to persistent
+storage**, despite that being the ideal end state: `/nfsshare` (a larger,
+separate 67T NFS mount at 172.16.13.71, 7.3T free) is where many other
+users' large data lives, but `hackathon01` has no directory there and
+`mkdir` fails with `Permission denied` (owned `root:nogroup`, 755) — no
+self-service access, would need a cluster admin to provision it. The
+GPFS `$HOME` (`fs_gpfs01`, where `~/hpc-stack` itself lives) has room
+filesystem-wide but §5.7 already documents a past write failure there
+from an invisible per-user quota — not safe to assume it can hold 450GB
+without confirming the real quota first. Revisit this once either is
+resolved; until then the model re-downloads if `dgx-node1` reboots, same
+as it always has.
+
 ## 5. Mistakes made and what actually fixed them
 
 ### 5.1 CUDA driver ceiling

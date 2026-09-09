@@ -45,6 +45,8 @@ sastra-master-node + dgx-node1 (shared NFS $HOME)
         ├── doctor.sh                  [git]  health check + $HOME leak check + exposure audit
         ├── restore-all.sh             [git]  disaster recovery after a $WORK wipe (reboot)
         ├── fix-webui-toolcalling.sh   [git]  reapplies the §5.4 tool-calling override
+        ├── coder-ctl.sh               [git]  on-demand qwen3-coder-480b: coder start/status/stop
+        ├── coder-idle-watch.sh        [git]  auto-stops coder after idle timeout (§4a)
         ├── keepalive.sh               [git]  touches $WORK so idle-reaper doesn't sweep it
         ├── bashrc-snippet.sh          [git]  wires env vars + aliases (svc, doctor, gpu) into .bashrc
         ├── laptop-ssh-config.example  [git]  SSH tunnel config template for YOUR laptop
@@ -119,6 +121,20 @@ doctor                  # leak check - run after any new pip/npm install
 
 `svc` works from the master node too; it detects the wrong hostname and
 re-executes itself over SSH to `dgx-node1`.
+
+### On-demand qwen3-coder-480b (doesn't permanently pin 4 GPUs)
+
+```bash
+coder start     # picks free GPUs fresh (nvidia-smi), launches, waits for ready (minutes)
+coder status    # up/down, which GPUs, health, idle-watch state
+coder stop      # stops it and releases the GPUs immediately
+```
+
+Auto-stops itself after 30 min with no requests (`CODER_IDLE_TIMEOUT` in
+`00-env.sh`) — no need to remember `coder stop` most of the time. There's
+no Slurm on this node (see `KNOWLEDGE.md` §4a for why), so GPU picking is
+a fresh `nvidia-smi` check each time, same as everything else on this
+shared box — not scheduler-enforced isolation, just never stale.
 
 ## Using the model as an API
 

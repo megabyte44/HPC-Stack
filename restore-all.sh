@@ -101,11 +101,13 @@ export VLLM_EXTRA_ARGS="${VLLM_EXTRA_ARGS:---max-model-len 32768 --gpu-memory-ut
 sleep 30
 
 export CODER_MODEL="${CODER_MODEL:-Qwen/Qwen3-Coder-480B-A35B-Instruct-FP8}"
-export CODER_GPUS="${CODER_GPUS:-2,4,5,6}"
 export CODER_TP_SIZE="${CODER_TP_SIZE:-4}"
 export CODER_SERVED_NAME="${CODER_SERVED_NAME:-qwen3-coder-480b}"
 export CODER_EXTRA_ARGS="${CODER_EXTRA_ARGS:---max-model-len 32768 --gpu-memory-utilization 0.90 --enable-auto-tool-choice --tool-call-parser qwen3_coder}"
-~/hpc-stack/svc.sh start coder
+# coder-ctl.sh picks free GPUs fresh via nvidia-smi and arms the idle-timeout
+# watcher - do NOT hardcode CODER_GPUS here, it goes stale (see KNOWLEDGE.md
+# §4a - this exact drift happened once already).
+~/hpc-stack/coder-ctl.sh start
 
 log "Launched. Both models download+load in the background - watch with:"
 log "  ~/hpc-stack/svc.sh logs vllm"
