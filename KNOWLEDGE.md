@@ -82,8 +82,10 @@ especially (zero auth, generates on H200s, worst one to leave open).
 After a `$WORK` wipe (reboot), from `~/hpc-stack/`:
 
 ```bash
-bash ~/hpc-stack/restore-all.sh            # toolchain + apps + base services
-bash ~/hpc-stack/restore-all.sh --models   # + both big vLLM models (~717GB download)
+bash ~/hpc-stack/restore-all.sh                    # toolchain + apps + base services
+bash ~/hpc-stack/restore-all.sh --models           # + both big vLLM models (~717GB download)
+bash ~/hpc-stack/restore-all.sh --comfyui          # + ComfyUI (clone + venv build)
+bash ~/hpc-stack/restore-all.sh --models --comfyui # everything
 ```
 
 Before running with `--models`, check `nvidia-smi` — the GPU defaults
@@ -91,31 +93,28 @@ baked into the script (`VLLM_GPUS`, `CODER_GPUS`) reflect the last known-good
 free set, not necessarily what's free *now*. Override via env vars if
 needed: `export CODER_GPUS=4,5,6,7` before running.
 
-What it does NOT restore automatically (manual follow-ups every time):
-- **Open-WebUI's tool-calling override** (§5.4) — the `model` table in
-  `webui.db` is fresh/empty after a rebuild, so the Legacy-function-calling
-  fix has to be reapplied by hand (see script below).
-- **ComfyUI** — not in `restore-all.sh` yet (installed ad hoc so far,
-  ephemeral on `$WORK`, needs full reclone+reinstall after every wipe).
-  Deliberately kept on `$WORK`, not NFS `$HOME` — see §5.7, a torch-heavy
-  venv there once failed with a phantom "No space left on device". Manual
-  reinstall (run on `dgx-node1`):
-  ```bash
-  export HPC_PORT_OFFSET=100
-  source ~/hpc-stack/00-env.sh
-  git clone --depth 1 https://github.com/comfyanonymous/ComfyUI.git \
-    "$HPC_APPS/comfyui/ComfyUI"
-  uv venv --python 3.11 "$HPC_APPS/comfyui/venv"
-  uv pip install --python "$HPC_APPS/comfyui/venv/bin/python" \
-    --torch-backend cu128 torch torchvision torchaudio
-  uv pip install --python "$HPC_APPS/comfyui/venv/bin/python" \
-    -r "$HPC_APPS/comfyui/ComfyUI/requirements.txt"
-  export COMFYUI_GPU=<pick a free one from nvidia-smi>
-  ~/hpc-stack/svc.sh start comfyui
-  ```
-  Takes ~15-20 min total (torch install is the slow part, more if the two
-  big vLLM downloads are saturating the link at the same time).
+As of 2026-09-09, `restore-all.sh` also handles:
+- **Open-WebUI's tool-calling override** (§5.4) — runs
+  `fix-webui-toolcalling.sh` automatically at the end. This is a genuine
+  no-op (not a failure) if you haven't signed back into Open-WebUI yet,
+  since the `model`/`user` tables don't exist until you have — just
+  re-run `bash ~/hpc-stack/fix-webui-toolcalling.sh` once you've signed up.
+  It stops/restarts webui itself around the sqlite edit, so don't run it
+  while you have unsaved work in the webui UI.
+- **ComfyUI** — `restore-all.sh --comfyui` clones + builds the venv (still
+  deliberately on `$WORK`, not NFS `$HOME` — see §5.7). You still start it
+  yourself once you've picked a free GPU: `export COMFYUI_GPU=<n>;
+  ~/hpc-stack/svc.sh start comfyui`. Takes ~15-20 min total (torch install
+  is the slow part, more if the two big vLLM downloads are saturating the
+  link at the same time).
+
+What still has no automation:
 - **Vision model (`vlm`)** — deprioritized, not currently deployed at all.
+- **SGLang** — see §6, not installed.
+
+For total loss — `~/hpc-stack` itself gone, not just `$WORK` — see
+`BOOTSTRAP.md`. That is the doc to follow with zero prior context and no
+AI assistance; this file assumes `~/hpc-stack` still exists.
 
 ## 5. Mistakes made and what actually fixed them
 

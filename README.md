@@ -164,6 +164,14 @@ node's offset ports — check `svc status`). Before routing anything:
   Access** policy in front of the hostname — it authenticates the visitor
   before they ever reach the service.
 
+## Disaster recovery
+
+- `$WORK` wiped (node reboot) but `~/hpc-stack/` still here → `restore-all.sh`,
+  see `KNOWLEDGE.md` §4.
+- `~/hpc-stack/` itself gone (deleted home, new account, new cluster) →
+  `BOOTSTRAP.md`. Written to be followed with no prior context and no AI
+  assistance — start there if everything is gone.
+
 ## Things that will bite you
 
 **`/tmp` is not permanent.** Many clusters delete files untouched for 7–14 days,
