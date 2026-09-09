@@ -47,6 +47,7 @@ sastra-master-node + dgx-node1 (shared NFS $HOME)
         ├── fix-webui-toolcalling.sh   [git]  reapplies the §5.4 tool-calling override
         ├── coder-ctl.sh               [git]  on-demand qwen3-coder-480b: coder start/status/stop
         ├── coder-idle-watch.sh        [git]  auto-stops coder after idle timeout (§4a)
+        ├── comfyui-idle-watch.sh      [git]  releases comfyui's VRAM (not the process) when idle (§4a.1)
         ├── keepalive.sh               [git]  touches $WORK so idle-reaper doesn't sweep it
         ├── bashrc-snippet.sh          [git]  wires env vars + aliases (svc, doctor, gpu) into .bashrc
         ├── laptop-ssh-config.example  [git]  SSH tunnel config template for YOUR laptop
@@ -135,6 +136,23 @@ Auto-stops itself after 15 min with no requests (`CODER_IDLE_TIMEOUT` in
 no Slurm on this node (see `KNOWLEDGE.md` §4a for why), so GPU picking is
 a fresh `nvidia-smi` check each time, same as everything else on this
 shared box — not scheduler-enforced isolation, just never stale.
+
+`qwen3-235b` (`vllm`) stays always-on as a general-purpose model,
+deliberately — no idle-management on it.
+
+### ComfyUI idle VRAM release (process stays up, GPU1's memory doesn't have to)
+
+```bash
+svc start comfyui-watch   # safe to run any time comfyui is already up
+```
+
+Different problem from `coder`: ComfyUI's process is cheap to leave
+running, but it caches loaded models in VRAM indefinitely between
+generations with no idle-unload of its own — found ~54GB sitting on GPU1
+overnight with an empty queue. This calls ComfyUI's own `POST /free` once
+the queue's been empty for `COMFYUI_IDLE_TIMEOUT` (15m default) — VRAM
+releases, process/UI stays up, next generation just reloads what it
+needs. See `KNOWLEDGE.md` §4a.1.
 
 ## Using the model as an API
 

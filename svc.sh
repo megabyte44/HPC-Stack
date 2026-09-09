@@ -17,7 +17,7 @@ set -uo pipefail
 
 source "$(dirname "$(readlink -f "$0")")/00-env.sh"
 
-SERVICES=(ollama webui n8n litellm vllm vlm coder coder-watch comfyui cloudflared moto keepalive)
+SERVICES=(ollama webui n8n litellm vllm vlm coder coder-watch comfyui comfyui-watch cloudflared moto keepalive)
 
 c()   { printf '\033[1;36m%s\033[0m\n' "$*"; }
 warn(){ printf '\033[1;33m%s\033[0m\n' "$*"; }
@@ -52,6 +52,7 @@ port_of() {
     coder)      echo "$CODER_PORT" ;;
     coder-watch) echo "" ;;  # background idle-timeout loop, nothing to bind
     comfyui)    echo "$COMFYUI_PORT" ;;
+    comfyui-watch) echo "" ;;  # background idle-VRAM-release loop, nothing to bind
     cloudflared) echo "" ;;   # outbound-only, nothing to bind locally
     moto)       echo "$MOTO_PORT" ;;
     keepalive)  echo "" ;;   # background loop, nothing to bind
@@ -155,6 +156,9 @@ start_one() {
       ;;
     coder-watch)
       spawn coder-watch "$(dirname "$0")/coder-idle-watch.sh"
+      ;;
+    comfyui-watch)
+      spawn comfyui-watch "$(dirname "$0")/comfyui-idle-watch.sh"
       ;;
     *) err "unknown service: $name"; return 1 ;;
   esac

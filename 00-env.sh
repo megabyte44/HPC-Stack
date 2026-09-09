@@ -167,6 +167,16 @@ export HPC_KEEPALIVE_INTERVAL
 : "${CODER_POLL_INTERVAL:=60}"           # seconds between idle-watch checks
 export CODER_IDLE_TIMEOUT CODER_GPU_FREE_THRESHOLD_MIB CODER_POLL_INTERVAL
 
+# ---- comfyui-idle-watch.sh (VRAM release, not process stop) ---------------
+# ComfyUI's own process is cheap to leave running (no boot-time model
+# commit like vLLM) but it caches loaded models in VRAM indefinitely
+# between generations with no idle-unload of its own - this just calls
+# ComfyUI's own POST /free periodically once the queue's been empty a
+# while, releasing VRAM without killing the process/UI.
+: "${COMFYUI_IDLE_TIMEOUT:=900}"    # seconds with an empty queue before calling /free (15m)
+: "${COMFYUI_POLL_INTERVAL:=120}"   # seconds between idle-watch checks
+export COMFYUI_IDLE_TIMEOUT COMFYUI_POLL_INTERVAL
+
 # ---- PATH -----------------------------------------------------------------
 _hpc_path_add() { case ":$PATH:" in *":$1:"*) ;; *) PATH="$1:$PATH" ;; esac; }
 _hpc_path_add "$NPM_CONFIG_PREFIX/bin"

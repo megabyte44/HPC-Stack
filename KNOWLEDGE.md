@@ -196,6 +196,36 @@ without confirming the real quota first. Revisit this once either is
 resolved; until then the model re-downloads if `dgx-node1` reboots, same
 as it always has.
 
+### 4a.1 ComfyUI gets a different idle strategy, not the same one as `coder`
+
+`qwen3-235b` (the `vllm` service) stays always-on as a general-purpose
+model, deliberately — no idle-management applied to it.
+
+ComfyUI is not like `coder` either, but for a different reason: its
+*process* is cheap to leave running (no boot-time model commit like
+vLLM), so a start/stop cycle isn't needed. What it does have is the same
+"nothing auto-unloads" problem in a different shape — confirmed
+2026-09-09 via its own `/system_stats`: **~54GB sat resident on GPU1 with
+an empty queue**, left over from a session the night before. ComfyUI
+caches whatever it last loaded, indefinitely, with no idle-timeout of its
+own.
+
+Fix: `comfyui-idle-watch.sh` (the `comfyui-watch` svc.sh service) polls
+`/queue` every `COMFYUI_POLL_INTERVAL` (120s default); once it's been
+empty for `COMFYUI_IDLE_TIMEOUT` (900s/15m default), it calls ComfyUI's
+own `POST /free` (`server.py`: `{"unload_models": true, "free_memory":
+true}`) — a real built-in endpoint, not a workaround. This releases VRAM
+**without** killing the process/UI; the next generation just reloads
+whatever checkpoint it needs, same cost as any first run. Note the
+release isn't instant — PyTorch's caching allocator takes a few seconds
+to actually hand pages back to the driver after the flag is set; `nvidia-smi`
+lags `/free` by several seconds.
+
+Start it any time `comfyui` is up (safe to arm on an already-running
+instance, no restart needed): `svc start comfyui-watch`. Not yet wired
+into `restore-all.sh --comfyui`'s startup instructions — start it
+manually alongside `comfyui` for now.
+
 ## 5. Mistakes made and what actually fixed them
 
 ### 5.1 CUDA driver ceiling
