@@ -156,7 +156,7 @@ known-good, not guaranteed free right now:
 
 ```bash
 nvidia-smi
-export VLLM_GPUS=0,3 CODER_GPUS=4,5,6,7   # only if different from defaults
+export VLLM_GPUS=0,3 CODER_GPUS=2,4,5,6   # only if different from current defaults - check nvidia-smi first
 bash ~/hpc-stack/restore-all.sh --models --comfyui
 ```
 

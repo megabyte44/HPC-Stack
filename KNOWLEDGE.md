@@ -89,9 +89,28 @@ bash ~/hpc-stack/restore-all.sh --models --comfyui # everything
 ```
 
 Before running with `--models`, check `nvidia-smi` — the GPU defaults
-baked into the script (`VLLM_GPUS`, `CODER_GPUS`) reflect the last known-good
-free set, not necessarily what's free *now*. Override via env vars if
-needed: `export CODER_GPUS=4,5,6,7` before running.
+baked into the script (`VLLM_GPUS=0,3`, `CODER_GPUS=2,4,5,6` as of
+2026-09-09) reflect the last known-good free set, not necessarily what's
+free *now*. Override via env vars if needed, e.g. `export
+CODER_GPUS=1,4,5,6` before running. Last confirmed live mapping (this
+drifts — always re-check with `nvidia-smi` / `svc status` rather than
+trusting this table):
+
+| GPU | Ours? | What |
+|---|---|---|
+| 0 | shared | `vllm` (qwen3-235b) TP rank 0, + other users' unrelated jobs |
+| 1 | ours only | `comfyui` — usually the one with real headroom |
+| 2 | shared | `coder` (qwen3-coder-480b) TP rank 0 |
+| 3 | shared | `vllm` (qwen3-235b) TP rank 1 |
+| 4 | ours only | `coder` (qwen3-coder-480b) TP rank 1 |
+| 5 | ours only | `coder` (qwen3-coder-480b) TP rank 2 |
+| 6 | ours only | `coder` (qwen3-coder-480b) TP rank 3 |
+| 7 | **not ours** | another user's own vLLM job — don't target this one |
+
+To reproduce this table yourself: `nvidia-smi --query-compute-apps=pid,used_memory,gpu_uuid --format=csv,noheader`
+cross-referenced with `nvidia-smi --query-gpu=index,uuid --format=csv,noheader`
+for the index, and `tr '\0' '\n' < /proc/<pid>/environ | grep CUDA_VISIBLE_DEVICES`
+(pids from `svc status`) for which of our services owns which index.
 
 As of 2026-09-09, `restore-all.sh` also handles:
 - **Open-WebUI's tool-calling override** (§5.4) — runs
