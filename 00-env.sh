@@ -191,13 +191,19 @@ export CODER_IDLE_TIMEOUT CODER_GPU_MIN_FREE_MIB CODER_GPU_MAX_UTIL_PCT CODER_PO
 # ---- vllm-ctl.sh (qwen3-235b, general-purpose - always-on by design, NO
 # idle-timeout; manual start/stop only via 'general start/status/stop') ----
 # Same capacity-aware picking as coder-ctl.sh - see KNOWLEDGE.md §4a.3.
-# Default min-free assumes VLLM_EXTRA_ARGS' default --gpu-memory-utilization
-# 0.92 (~132GB target on a 143771 MiB H200) plus headroom. Do NOT "fix" a
-# tight-KV-cache failure by lowering --gpu-memory-utilization on a retry -
-# that shrinks the total budget and starves the KV cache further (this
-# exact mistake happened once, see §4a.3). Pick a GPU with more free
-# memory instead; leave gpu-memory-utilization at its proven default.
-: "${VLLM_GPU_MIN_FREE_MIB:=135000}"  # a GPU needs at least this much free to be a candidate
+# Confirmed 2026-09-09: the original default (--max-model-len 32768
+# --gpu-memory-utilization 0.92, needing ~132GB/GPU) OOM'd twice on this
+# shared box even with 137GB genuinely free at pick time - there's only
+# ~11.5GB of possible slack above that target on a totally idle H200, not
+# enough margin once ANY other tenant has ANYTHING resident. Both
+# VLLM_EXTRA_ARGS' default and this threshold were dropped together to
+# --max-model-len 24576 --gpu-memory-utilization 0.85 (~122GB/GPU, ~21.5GB
+# max possible slack) - confirmed working. Do NOT "fix" a tight-KV-cache
+# failure by lowering --gpu-memory-utilization ALONE on a retry - that
+# shrinks the total budget while the KV-cache requirement stays fixed,
+# starving it further (this exact mistake happened once, see §4a.3).
+# Lower max-model-len together with it, or pick a GPU with more headroom.
+: "${VLLM_GPU_MIN_FREE_MIB:=128000}"  # a GPU needs at least this much free to be a candidate
 : "${VLLM_GPU_MAX_UTIL_PCT:=50}"      # skip GPUs above this compute utilization %, even if memory fits
 export VLLM_GPU_MIN_FREE_MIB VLLM_GPU_MAX_UTIL_PCT
 

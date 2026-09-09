@@ -87,7 +87,10 @@ cmd_start() {
   export VLLM_MODEL="${VLLM_MODEL:-Qwen/Qwen3-235B-A22B-Instruct-2507-FP8}"
   export VLLM_TP_SIZE="$want"
   export VLLM_SERVED_NAME="${VLLM_SERVED_NAME:-qwen3-235b}"
-  export VLLM_EXTRA_ARGS="${VLLM_EXTRA_ARGS:---max-model-len 32768 --gpu-memory-utilization 0.92 --enable-auto-tool-choice --tool-call-parser qwen3_xml}"
+  # 24576/0.85, not 32768/0.92 - the higher combo OOM'd twice in a row on
+  # this shared box even with 137GB free at pick time (KNOWLEDGE.md §4a.3);
+  # this lower combo is what actually came up clean.
+  export VLLM_EXTRA_ARGS="${VLLM_EXTRA_ARGS:---max-model-len 24576 --gpu-memory-utilization 0.85 --enable-auto-tool-choice --tool-call-parser qwen3_xml}"
 
   bash "$SELF_DIR/svc.sh" start vllm || return 1
 

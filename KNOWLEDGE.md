@@ -289,6 +289,26 @@ KV cache. **Leave `--gpu-memory-utilization` at its proven default and
 fix GPU selection instead**, which is exactly what this section's picker
 change does automatically now.
 
+**Update, same session:** the very next attempt — fresh picker, default
+0.92/32768, GPUs with ~137GB free at pick time — still died, this time
+with a genuine `CUDA out of memory occurred when warming up sampler with
+1024 dummy requests`, ~4 minutes into loading. Neighbor usage on those
+GPUs was unchanged before and after (~6.5GB), so this wasn't drift — it's
+that 0.92/32768 (~132GB target) only has ~11.5GB of possible slack above
+it on a totally idle 143771 MiB H200, and the warmup step's transient
+memory need eats into that on top of the persistent KV-cache reservation.
+There isn't a fully-idle GPU to be had reliably on this box. **Fix that
+stuck this time:** dropped `VLLM_EXTRA_ARGS`' default (`vllm-ctl.sh`,
+`restore-all.sh`) *and* `VLLM_GPU_MIN_FREE_MIB` together to
+`--max-model-len 24576 --gpu-memory-utilization 0.85` (~122GB target,
+~21.5GB max possible slack) — confirmed working end-to-end through
+litellm. This matches §5.9a's own historical precedent (that section
+already records this exact combo working before) — the general
+principle holds: when *lowering* the memory footprint to survive a
+busier box, move `max_model_len` and `gpu_memory_utilization` down
+**together**, since the KV-cache requirement scales with the former and
+the budget scales with the latter; moving only one starves the other.
+
 ## 5. Mistakes made and what actually fixed them
 
 ### 5.1 CUDA driver ceiling
