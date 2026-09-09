@@ -46,6 +46,7 @@ sastra-master-node + dgx-node1 (shared NFS $HOME)
         ├── restore-all.sh             [git]  disaster recovery after a $WORK wipe (reboot)
         ├── fix-webui-toolcalling.sh   [git]  reapplies the §5.4 tool-calling override
         ├── coder-ctl.sh               [git]  on-demand qwen3-coder-480b: coder start/status/stop
+        ├── vllm-ctl.sh                [git]  always-on qwen3-235b, manual control: general start/status/stop
         ├── coder-idle-watch.sh        [git]  auto-stops coder after idle timeout (§4a)
         ├── comfyui-idle-watch.sh      [git]  releases comfyui's VRAM (not the process) when idle (§4a.1)
         ├── keepalive.sh               [git]  touches $WORK so idle-reaper doesn't sweep it
@@ -137,8 +138,19 @@ no Slurm on this node (see `KNOWLEDGE.md` §4a for why), so GPU picking is
 a fresh `nvidia-smi` check each time, same as everything else on this
 shared box — not scheduler-enforced isolation, just never stale.
 
-`qwen3-235b` (`vllm`) stays always-on as a general-purpose model,
-deliberately — no idle-management on it.
+### qwen3-235b — always-on, stop it only when you choose to
+
+```bash
+general start     # picks free GPUs fresh, launches, waits for ready (minutes)
+general status    # up/down, which GPUs, health
+general stop      # your call, any time - releases the GPUs
+```
+
+Deliberately **no idle-timeout** — this is the one you keep as
+general-purpose/default, so it stays up until you explicitly stop it,
+same GPU-picking discipline as `coder` otherwise (fresh `nvidia-smi`
+check, no stale hardcoded GPU list). Aliased to `general`, not `vllm` —
+`vllm` is already the real CLI binary on `$PATH`.
 
 ### ComfyUI idle VRAM release (process stays up, GPU1's memory doesn't have to)
 

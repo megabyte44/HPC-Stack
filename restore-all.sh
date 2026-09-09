@@ -87,11 +87,12 @@ if [[ ! -x "$HPC_OPT/uv-tools/vllm/bin/vllm" ]]; then
 fi
 
 export VLLM_MODEL="${VLLM_MODEL:-Qwen/Qwen3-235B-A22B-Instruct-2507-FP8}"
-export VLLM_GPUS="${VLLM_GPUS:-0,3}"
 export VLLM_TP_SIZE="${VLLM_TP_SIZE:-2}"
 export VLLM_SERVED_NAME="${VLLM_SERVED_NAME:-qwen3-235b}"
 export VLLM_EXTRA_ARGS="${VLLM_EXTRA_ARGS:---max-model-len 32768 --gpu-memory-utilization 0.92 --enable-auto-tool-choice --tool-call-parser qwen3_xml}"
-~/hpc-stack/svc.sh start vllm
+# vllm-ctl.sh picks free GPUs fresh via nvidia-smi - do NOT hardcode
+# VLLM_GPUS here, same staleness risk CODER_GPUS already hit once.
+~/hpc-stack/vllm-ctl.sh start
 
 # vLLM auto-picks a port for its internal multi-GPU rendezvous. Starting both
 # engines back-to-back races them onto the same port (EADDRINUSE / gloo

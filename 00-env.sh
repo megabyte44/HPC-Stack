@@ -166,6 +166,11 @@ export HPC_KEEPALIVE_INTERVAL
 : "${CODER_POLL_INTERVAL:=60}"           # seconds between idle-watch checks
 export CODER_IDLE_TIMEOUT CODER_GPU_FREE_THRESHOLD_MIB CODER_POLL_INTERVAL
 
+# ---- vllm-ctl.sh (qwen3-235b, general-purpose - always-on by design, NO
+# idle-timeout; manual start/stop only via 'general start/status/stop') ----
+: "${VLLM_GPU_FREE_THRESHOLD_MIB:=2000}" # a GPU below this used-MiB counts as "free" to claim
+export VLLM_GPU_FREE_THRESHOLD_MIB
+
 # ---- comfyui-idle-watch.sh (VRAM release, not process stop) ---------------
 # ComfyUI's own process is cheap to leave running (no boot-time model
 # commit like vLLM) but it caches loaded models in VRAM indefinitely

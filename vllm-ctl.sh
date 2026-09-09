@@ -1,0 +1,120 @@
+#!/usr/bin/env bash
+# =============================================================================
+# vllm-ctl.sh - start/status/stop for qwen3-235b, the always-on
+# general-purpose model. Unlike coder-ctl.sh, this deliberately has NO
+# idle-timeout - it stays up until you stop it yourself. What it gives you
+# over raw `svc.sh start vllm` is the same convenience coder-ctl.sh gives
+# for coder: a fresh nvidia-smi free-GPU pick instead of a hardcoded
+# CODER_GPUS-style default that goes stale, and a wait-for-ready poll.
+#
+#   general start    # picks free GPUs fresh, launches vLLM, waits for ready
+#   general status    # up/down, which GPUs, health
+#   general stop      # stops it, releases the GPUs - your call, any time
+#
+# (bashrc-snippet.sh aliases 'general' to this script - NOT 'vllm', that
+# name is already the real vLLM CLI binary in $PATH)
+#
+# Same no-Slurm situation as coder - see KNOWLEDGE.md §4a. GPU picking here
+# is the same fresh nvidia-smi check, not scheduler-enforced isolation.
+# =============================================================================
+set -uo pipefail
+source "$(dirname "$(readlink -f "$0")")/00-env.sh"
+
+log() { printf '\033[1;34m[general]\033[0m %s\n' "$*"; }
+err() { printf '\033[1;31m[general]\033[0m %s\n' "$*" >&2; }
+
+[[ "$(hostname -s)" == "$HPC_GPU_NODE" ]] || exec ssh -t "$HPC_GPU_NODE" "bash \$HOME/hpc-stack/vllm-ctl.sh $*"
+
+SELF_DIR="$(dirname "$(readlink -f "$0")")"
+
+is_vllm_up() {
+  [[ -f "$HPC_RUN/vllm.pid" ]] && kill -0 "$(cat "$HPC_RUN/vllm.pid" 2>/dev/null)" 2>/dev/null
+}
+
+pick_free_gpus() {
+  local need="$1" thresh="$VLLM_GPU_FREE_THRESHOLD_MIB"
+  nvidia-smi --query-gpu=index,memory.used --format=csv,noheader,nounits 2>/dev/null \
+    | awk -F',' -v t="$thresh" '{gsub(/ /,"",$2); if ($2+0 < t) print $1}' \
+    | head -n "$need" | paste -sd, -
+}
+
+cmd_start() {
+  if is_vllm_up; then
+    log "already running (pid $(cat "$HPC_RUN/vllm.pid")). See: general status"
+    return 0
+  fi
+
+  local want="${VLLM_TP_SIZE:-2}"
+  local picked
+  if [[ -n "${VLLM_GPUS:-}" ]]; then
+    picked="$VLLM_GPUS"
+    log "using manually-set VLLM_GPUS=$picked (skipping auto-pick)"
+  else
+    log "checking nvidia-smi for ${want} free GPU(s) (< ${VLLM_GPU_FREE_THRESHOLD_MIB} MiB used)..."
+    picked="$(pick_free_gpus "$want")"
+    local n=0; [[ -n "$picked" ]] && n=$(( $(grep -o ',' <<<"$picked" | wc -l) + 1 ))
+    if (( n < want )); then
+      err "only found $n free GPU(s), need $want. Not guessing further -"
+      err "  run 'nvidia-smi' yourself; this is a shared box, it may just be busy right now."
+      return 1
+    fi
+    log "picked GPUs: $picked"
+  fi
+
+  export VLLM_GPUS="$picked"
+  export VLLM_MODEL="${VLLM_MODEL:-Qwen/Qwen3-235B-A22B-Instruct-2507-FP8}"
+  export VLLM_TP_SIZE="$want"
+  export VLLM_SERVED_NAME="${VLLM_SERVED_NAME:-qwen3-235b}"
+  export VLLM_EXTRA_ARGS="${VLLM_EXTRA_ARGS:---max-model-len 32768 --gpu-memory-utilization 0.92 --enable-auto-tool-choice --tool-call-parser qwen3_xml}"
+
+  bash "$SELF_DIR/svc.sh" start vllm || return 1
+
+  log "waiting for model to load from disk (~235GB FP8 - this takes real minutes)..."
+  local waited=0
+  until curl -fsS -m 3 "http://127.0.0.1:${VLLM_PORT}/health" >/dev/null 2>&1; do
+    if ! is_vllm_up; then
+      err "vllm process died while loading - check: svc logs vllm"
+      return 1
+    fi
+    sleep 10; waited=$((waited + 10))
+    if (( waited % 60 == 0 )); then
+      log "  still loading... (${waited}s elapsed - svc logs vllm for detail)"
+    fi
+    if (( waited >= 1200 )); then
+      err "still not healthy after 20 minutes - something's likely wrong. Check: svc logs vllm"
+      return 1
+    fi
+  done
+  log "ready. Endpoint: http://127.0.0.1:${VLLM_PORT}/v1"
+  log "  (or via litellm: http://127.0.0.1:${LITELLM_PORT}/v1, model=qwen3-235b)"
+  log "no idle-timeout on this one, by design - stop it yourself with 'general stop' when you want the GPUs back."
+}
+
+cmd_stop() {
+  bash "$SELF_DIR/svc.sh" stop vllm
+  log "stopped. GPUs released."
+}
+
+cmd_status() {
+  if is_vllm_up; then
+    local pid gpus
+    pid="$(cat "$HPC_RUN/vllm.pid")"
+    gpus="$(tr '\0' '\n' < "/proc/$pid/environ" 2>/dev/null | grep '^VLLM_GPUS=' | cut -d= -f2)"
+    log "vllm (qwen3-235b): UP (pid $pid, GPUs ${gpus:-unknown})"
+    if curl -fsS -m 3 "http://127.0.0.1:${VLLM_PORT}/health" >/dev/null 2>&1; then
+      log "  health: OK"
+    else
+      log "  health: not responding yet (still loading? check: svc logs vllm)"
+    fi
+    log "  idle-timeout: none by design - stops only when you run 'general stop'"
+  else
+    log "vllm (qwen3-235b): DOWN. Run 'general start' to bring it up (picks free GPUs automatically)."
+  fi
+}
+
+case "${1:-status}" in
+  start)  cmd_start ;;
+  stop)   cmd_stop ;;
+  status) cmd_status ;;
+  *) err "usage: vllm-ctl.sh {start|status|stop}"; exit 1 ;;
+esac

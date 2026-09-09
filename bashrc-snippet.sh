@@ -16,6 +16,7 @@ fi
 # convenience aliases
 alias svc='bash $HOME/hpc-stack/svc.sh'
 alias coder='bash $HOME/hpc-stack/coder-ctl.sh'
+alias general='bash $HOME/hpc-stack/vllm-ctl.sh'
 alias doctor='bash $HOME/hpc-stack/doctor.sh'
 alias gpu='ssh -t "$HPC_GPU_NODE"'
 alias gpustat='ssh "$HPC_GPU_NODE" nvidia-smi'

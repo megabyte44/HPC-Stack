@@ -227,6 +227,19 @@ instance, no restart needed): `svc start comfyui-watch`. Not yet wired
 into `restore-all.sh --comfyui`'s startup instructions — start it
 manually alongside `comfyui` for now.
 
+### 4a.2 `vllm-ctl.sh` — same convenience as `coder`, deliberately no idle-timeout
+
+`qwen3-235b` stays the always-on general-purpose model — that was an
+explicit choice, not an oversight, so it gets `vllm-ctl.sh` (`general
+start/status/stop`) instead of `coder-ctl.sh`'s pattern: same fresh
+`nvidia-smi` free-GPU pick and wait-for-`/health` on start, but **no**
+paired idle-watch service. It stays up until you run `general stop`
+yourself. Aliased `general`, not `vllm` — that name is already the real
+vLLM CLI binary on `$PATH`; aliasing over it would shadow it.
+`restore-all.sh` calls `vllm-ctl.sh start` for the same reason it calls
+`coder-ctl.sh start` — a hardcoded `VLLM_GPUS` default already went
+stale once (§4a), no reason to keep that risk for this one too.
+
 ## 5. Mistakes made and what actually fixed them
 
 ### 5.1 CUDA driver ceiling
