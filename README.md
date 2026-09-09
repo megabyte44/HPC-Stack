@@ -130,7 +130,7 @@ coder status    # up/down, which GPUs, health, idle-watch state
 coder stop      # stops it and releases the GPUs immediately
 ```
 
-Auto-stops itself after 30 min with no requests (`CODER_IDLE_TIMEOUT` in
+Auto-stops itself after 15 min with no requests (`CODER_IDLE_TIMEOUT` in
 `00-env.sh`) — no need to remember `coder stop` most of the time. There's
 no Slurm on this node (see `KNOWLEDGE.md` §4a for why), so GPU picking is
 a fresh `nvidia-smi` check each time, same as everything else on this

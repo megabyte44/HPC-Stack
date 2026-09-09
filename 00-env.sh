@@ -162,7 +162,7 @@ export HPC_KEEPALIVE_INTERVAL
 
 # ---- coder-ctl.sh (on-demand qwen3-coder-480b, no Slurm on this node - see
 # KNOWLEDGE.md §4a) ----------------------------------------------------------
-: "${CODER_IDLE_TIMEOUT:=1800}"          # seconds with no requests before auto-stop (30m)
+: "${CODER_IDLE_TIMEOUT:=900}"           # seconds with no requests before auto-stop (15m)
 : "${CODER_GPU_FREE_THRESHOLD_MIB:=2000}" # a GPU below this used-MiB counts as "free" to claim
 : "${CODER_POLL_INTERVAL:=60}"           # seconds between idle-watch checks
 export CODER_IDLE_TIMEOUT CODER_GPU_FREE_THRESHOLD_MIB CODER_POLL_INTERVAL

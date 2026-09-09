@@ -173,7 +173,7 @@ service, polling vLLM's own `/metrics` (`vllm:request_success_total`
 counter, `vllm:num_requests_running` gauge — not log timestamps, vLLM
 logs periodic stats lines even at zero traffic, which would make a
 log-mtime check never fire) every `CODER_POLL_INTERVAL` (60s default). No
-activity for `CODER_IDLE_TIMEOUT` (1800s/30m default) → `svc.sh stop
+activity for `CODER_IDLE_TIMEOUT` (900s/15m default) → `svc.sh stop
 coder`, GPUs released. `coder-ctl.sh start` arms a fresh watcher every
 time; `coder stop` tears both down together.
 
